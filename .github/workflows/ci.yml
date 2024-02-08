@@ -1,0 +1,57 @@
+name: Continuous Integration
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+
+    env:
+      MAKEJOBS: "-j3"
+
+    strategy:
+      fail-fast: false
+      matrix:
+        name:
+          - x86_64-linux-clang
+          - x86_64-linux-g++
+        include:
+          - name: x86_64-linux-clang
+            os: ubuntu-22.04
+            packages: autoconf automake clang libtool make
+            test-script: |
+              make $MAKEJOBS check
+            config-opts: "--enable-shared --enable-static CC=clang CXX=clang++"
+          - name: x86_64-linux-g++
+            os: ubuntu-22.04
+            packages: autoconf automake g++ libtool make
+            test-script: |
+              make $MAKEJOBS check
+            config-opts: "--enable-shared --enable-static"
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+
+      - name: Install packages
+        run: |
+          sudo apt-get update
+          sudo apt-get upgrade -y
+          sudo apt-get install -y ${{ matrix.packages }}
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build univalue
+        run: |
+          ./autogen.sh
+          ./configure ${{ matrix.config-opts }} || ( cat config.log ; false)
+          make $MAKEJOBS || ( echo "Build failure. Verbose build follows." && make V=1 ; false )
+
+      - name: Run tests
+        if: ${{ matrix.test-script }}
+        run: ${{ matrix.test-script }}
