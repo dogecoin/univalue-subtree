@@ -48,7 +48,7 @@ const std::vector<std::string>& UniValue::getKeys() const
 {
     if (typ != VOBJ)
         throw std::runtime_error("JSON value is not an object as expected");
-    return keys;
+    return key_vector;
 }
 
 const std::vector<UniValue>& UniValue::getValues() const
