@@ -20,6 +20,7 @@ void UniValue::clear()
     typ = VNULL;
     val.clear();
     keys.clear();
+    key_vector.clear();
     values.clear();
 }
 
@@ -129,7 +130,8 @@ bool UniValue::push_backV(const std::vector<UniValue>& vec)
 
 void UniValue::__pushKV(const std::string& key, const UniValue& val_)
 {
-    keys.push_back(key);
+    keys[key] = values.size();
+    key_vector.push_back(key);
     values.push_back(val_);
 }
 
@@ -151,8 +153,8 @@ bool UniValue::pushKVs(const UniValue& obj)
     if (typ != VOBJ || obj.typ != VOBJ)
         return false;
 
-    for (size_t i = 0; i < obj.keys.size(); i++)
-        __pushKV(obj.keys[i], obj.values.at(i));
+    for (const auto& [key, i] : obj.keys)
+        __pushKV(key, obj.values.at(i));
 
     return true;
 }
@@ -163,17 +165,15 @@ void UniValue::getObjMap(std::map<std::string,UniValue>& kv) const
         return;
 
     kv.clear();
-    for (size_t i = 0; i < keys.size(); i++)
-        kv[keys[i]] = values[i];
+    for (const auto& [key, i] : keys)
+        kv[key] = values[i];
 }
 
 bool UniValue::findKey(const std::string& key, size_t& retIdx) const
 {
-    for (size_t i = 0; i < keys.size(); i++) {
-        if (keys[i] == key) {
-            retIdx = i;
-            return true;
-        }
+    if (keys.find(key) != keys.end()) {
+        retIdx = keys.find(key)->second;
+        return true;
     }
 
     return false;
@@ -238,9 +238,8 @@ const char *uvTypeName(UniValue::VType t)
 
 const UniValue& find_value(const UniValue& obj, const std::string& name)
 {
-    for (unsigned int i = 0; i < obj.keys.size(); i++)
-        if (obj.keys[i] == name)
-            return obj.values.at(i);
+    if (obj.keys.find(name) != obj.keys.end())
+        return obj.values[obj.keys.find(name)->second];
 
     return NullUniValue;
 }

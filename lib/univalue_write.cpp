@@ -94,10 +94,10 @@ void UniValue::writeObject(unsigned int prettyIndent, unsigned int indentLevel, 
     if (prettyIndent)
         s += "\n";
 
-    for (unsigned int i = 0; i < keys.size(); i++) {
+    for (unsigned int i = 0; i < key_vector.size(); i++) {
         if (prettyIndent)
             indentStr(prettyIndent, indentLevel, s);
-        s += "\"" + json_escape(keys[i]) + "\":";
+        s += "\"" + json_escape(key_vector[i]) + "\":";
         if (prettyIndent)
             s += " ";
         s += values.at(i).write(prettyIndent, indentLevel + 1);

@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <cstring>
 #include <map>
+#include <unordered_map>
 #include <stdexcept>
 #include <string>
 #include <type_traits>
@@ -101,7 +102,8 @@ public:
 private:
     UniValue::VType typ;
     std::string val;                       // numbers are stored as C++ strings
-    std::vector<std::string> keys;
+    std::unordered_map<std::string, size_t> keys;
+    std::vector<std::string> key_vector;
     std::vector<UniValue> values;
 
     bool findKey(const std::string& key, size_t& retIdx) const;
