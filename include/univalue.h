@@ -10,16 +10,18 @@
 #include <cstdint>
 #include <cstring>
 #include <map>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <type_traits>
 #include <vector>
+#include <unordered_map>
 
 class UniValue {
 public:
     enum VType { VNULL, VOBJ, VARR, VSTR, VNUM, VBOOL, };
 
-    UniValue() { typ = VNULL; }
+    UniValue() noexcept { typ = VNULL; }
     UniValue(UniValue::VType initialType, const std::string& initialStr = "") {
         typ = initialType;
         val = initialStr;
@@ -47,6 +49,41 @@ public:
         setStr(s);
     }
 
+    // Special member functions
+    UniValue(const UniValue& other) :
+        typ(other.typ),
+        val(other.val),
+        keys(other.keys),
+        values(other.values)
+    {
+        if (other.key_lookup) {
+            key_lookup = std::make_unique<std::unordered_map<std::string, size_t>>(*other.key_lookup);
+        }
+    }
+
+    // Move constructor
+    UniValue(UniValue&& other) noexcept :
+        typ(other.typ),
+        val(std::move(other.val)),
+        keys(std::move(other.keys)),
+        values(std::move(other.values)),
+        key_lookup(std::move(other.key_lookup))
+    {
+        other.typ = VNULL;
+    }
+
+    // Assignment operator using copy-and-swap idiom
+    UniValue& operator=(UniValue other) noexcept {
+        std::swap(typ, other.typ);
+        std::swap(val, other.val);
+        std::swap(keys, other.keys);
+        std::swap(values, other.values);
+        std::swap(key_lookup, other.key_lookup);
+        return *this;
+    }
+
+    ~UniValue() = default;
+
     void clear();
 
     bool setNull();
@@ -60,11 +97,19 @@ public:
     bool setArray();
     bool setObject();
 
-    enum VType getType() const { return typ; }
-    const std::string& getValStr() const { return val; }
-    bool empty() const { return (values.size() == 0); }
-
-    size_t size() const { return values.size(); }
+    // Query methods that can't throw
+    VType getType() const noexcept { return typ; }
+    const std::string& getValStr() const noexcept { return val; }
+    bool empty() const noexcept { return (values.size() == 0); }
+    size_t size() const noexcept { return values.size(); }
+    bool isNull() const noexcept { return (typ == VNULL); }
+    bool isTrue() const noexcept { return (typ == VBOOL) && (val == "1"); }
+    bool isFalse() const noexcept { return (typ == VBOOL) && (val != "1"); }
+    bool isBool() const noexcept { return (typ == VBOOL); }
+    bool isStr() const noexcept { return (typ == VSTR); }
+    bool isNum() const noexcept { return (typ == VNUM); }
+    bool isArray() const noexcept { return (typ == VARR); }
+    bool isObject() const noexcept { return (typ == VOBJ); }
 
     bool getBool() const { return isTrue(); }
     void getObjMap(std::map<std::string,UniValue>& kv) const;
@@ -72,15 +117,6 @@ public:
     const UniValue& operator[](const std::string& key) const;
     const UniValue& operator[](size_t index) const;
     bool exists(const std::string& key) const { size_t i; return findKey(key, i); }
-
-    bool isNull() const { return (typ == VNULL); }
-    bool isTrue() const { return (typ == VBOOL) && (val == "1"); }
-    bool isFalse() const { return (typ == VBOOL) && (val != "1"); }
-    bool isBool() const { return (typ == VBOOL); }
-    bool isStr() const { return (typ == VSTR); }
-    bool isNum() const { return (typ == VNUM); }
-    bool isArray() const { return (typ == VARR); }
-    bool isObject() const { return (typ == VOBJ); }
 
     bool push_back(const UniValue& val);
     bool push_backV(const std::vector<UniValue>& vec);
@@ -100,9 +136,12 @@ public:
 
 private:
     UniValue::VType typ;
-    std::string val;                       // numbers are stored as C++ strings
+    std::string val;
     std::vector<std::string> keys;
     std::vector<UniValue> values;
+    static constexpr size_t SMALL_OBJECT_THRESHOLD = 8;
+    static constexpr const char* TRUE_STR = "1";
+    mutable std::unique_ptr<std::unordered_map<std::string, size_t>> key_lookup;
 
     bool findKey(const std::string& key, size_t& retIdx) const;
     void writeArray(unsigned int prettyIndent, unsigned int indentLevel, std::string& s) const;
@@ -155,10 +194,9 @@ enum jtokentype {
 
 extern enum jtokentype getJsonToken(std::string& tokenVal,
                                     unsigned int& consumed, const char *raw, const char *end);
-extern const char *uvTypeName(UniValue::VType t);
+extern const char* uvTypeName(UniValue::VType t) noexcept;
 
-static inline bool jsonTokenIsValue(enum jtokentype jtt)
-{
+static inline bool jsonTokenIsValue(enum jtokentype jtt) noexcept {
     switch (jtt) {
     case JTOK_KW_NULL:
     case JTOK_KW_TRUE:
@@ -174,8 +212,7 @@ static inline bool jsonTokenIsValue(enum jtokentype jtt)
     // not reached
 }
 
-static inline bool json_isspace(int ch)
-{
+static inline bool json_isspace(int ch) noexcept {
     switch (ch) {
     case 0x20:
     case 0x09:

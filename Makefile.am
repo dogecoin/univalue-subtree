@@ -31,7 +31,16 @@ gen: $(GENBIN) FORCE
 	@echo Updating lib/univalue_escapes.h
 	$(AM_V_at)$(GENBIN) > lib/univalue_escapes.h
 
-noinst_PROGRAMS = $(TESTS) test/test_json
+noinst_PROGRAMS = $(TESTS) test/test_json bench/bench_univalue
+
+bench_bench_univalue_SOURCES = bench/bench_univalue.cpp
+bench_bench_univalue_LDADD = libunivalue.la
+bench_bench_univalue_CXXFLAGS = -I$(top_srcdir)/include
+bench_bench_univalue_LDFLAGS = -static $(LIBTOOL_APP_LDFLAGS)
+
+.PHONY: bench
+bench: bench/bench_univalue
+	./bench/bench_univalue
 
 test_unitester_SOURCES = $(UNIVALUE_TEST_UNITESTER_INT)
 test_unitester_LDADD = libunivalue.la

@@ -10,6 +10,7 @@
 #include <memory>
 #include <sstream>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -21,6 +22,7 @@ void UniValue::clear()
     val.clear();
     keys.clear();
     values.clear();
+    key_lookup.reset();
 }
 
 bool UniValue::setNull()
@@ -129,8 +131,14 @@ bool UniValue::push_backV(const std::vector<UniValue>& vec)
 
 void UniValue::__pushKV(const std::string& key, const UniValue& val_)
 {
+    size_t idx = values.size();
     keys.push_back(key);
     values.push_back(val_);
+
+    // Only create key_lookup when we exceed threshold AND need to look something up
+    if (key_lookup) {
+        (*key_lookup)[key] = idx;
+    }
 }
 
 bool UniValue::pushKV(const std::string& key, const UniValue& val_)
@@ -139,44 +147,36 @@ bool UniValue::pushKV(const std::string& key, const UniValue& val_)
         return false;
 
     size_t idx;
-    if (findKey(key, idx))
-        values[idx] = val_;
-    else
+    if (findKey(key, idx)) {
+        values[idx] = val_;  // Simply replace the value at the found index
+    } else {
         __pushKV(key, val_);
+    }
     return true;
 }
 
-bool UniValue::pushKVs(const UniValue& obj)
-{
+bool UniValue::pushKVs(const UniValue& obj) {
     if (typ != VOBJ || obj.typ != VOBJ)
         return false;
 
-    for (size_t i = 0; i < obj.keys.size(); i++)
-        __pushKV(obj.keys[i], obj.values.at(i));
-
+    for (size_t i = 0; i < obj.keys.size(); ++i) {
+        if (!pushKV(obj.keys[i], obj.values[i]))
+            return false;
+    }
     return true;
 }
 
-void UniValue::getObjMap(std::map<std::string,UniValue>& kv) const
-{
+void UniValue::getObjMap(std::map<std::string,UniValue>& kv) const {
     if (typ != VOBJ)
         return;
 
     kv.clear();
-    for (size_t i = 0; i < keys.size(); i++)
-        kv[keys[i]] = values[i];
-}
 
-bool UniValue::findKey(const std::string& key, size_t& retIdx) const
-{
-    for (size_t i = 0; i < keys.size(); i++) {
-        if (keys[i] == key) {
-            retIdx = i;
-            return true;
-        }
+    auto hint = kv.begin();
+    for (size_t i = 0; i < keys.size(); ++i) {
+        // Use hint for ordered insertion
+        hint = kv.emplace_hint(hint, keys[i], values[i]);
     }
-
-    return false;
 }
 
 bool UniValue::checkObject(const std::map<std::string,UniValue::VType>& t) const
@@ -197,6 +197,35 @@ bool UniValue::checkObject(const std::map<std::string,UniValue::VType>& t) const
     }
 
     return true;
+}
+
+bool UniValue::findKey(const std::string& key, size_t& retIdx) const
+{
+    // Always do linear search for small objects
+    if (values.size() <= SMALL_OBJECT_THRESHOLD) {
+        for (size_t i = 0; i < keys.size(); ++i) {
+            if (keys[i] == key) {
+                retIdx = i;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // Create key_lookup lazily only when needed for large objects
+    if (!key_lookup) {
+        key_lookup = std::make_unique<std::unordered_map<std::string, size_t>>();
+        for (size_t i = 0; i < keys.size(); ++i) {
+            (*key_lookup)[keys[i]] = i;
+        }
+    }
+
+    auto it = key_lookup->find(key);
+    if (it != key_lookup->end()) {
+        retIdx = it->second;
+        return true;
+    }
+    return false;
 }
 
 const UniValue& UniValue::operator[](const std::string& key) const
@@ -221,7 +250,7 @@ const UniValue& UniValue::operator[](size_t index) const
     return values.at(index);
 }
 
-const char *uvTypeName(UniValue::VType t)
+const char *uvTypeName(UniValue::VType t) noexcept
 {
     switch (t) {
     case UniValue::VNULL: return "null";
@@ -238,10 +267,9 @@ const char *uvTypeName(UniValue::VType t)
 
 const UniValue& find_value(const UniValue& obj, const std::string& name)
 {
-    for (unsigned int i = 0; i < obj.keys.size(); i++)
-        if (obj.keys[i] == name)
-            return obj.values.at(i);
-
+    size_t idx;
+    if (obj.findKey(name, idx)) {
+        return obj.values.at(idx);
+    }
     return NullUniValue;
 }
-
